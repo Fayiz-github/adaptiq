@@ -1,0 +1,24 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Environment variables — never commit!
+.env
+
+# Database
+results.db
+*.db
+
+# Planning & design documents — keep local only
+*.docx
+*.doc
+*.pdf
+*.xlsx
+*.pptx
