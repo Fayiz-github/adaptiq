@@ -109,16 +109,35 @@ def start_quiz(state: QuizState) -> QuizState:
 
 # ── Node 2: Select the next question ─────────────────────────────────────────
 
+MAX_QUESTIONS_PER_TOPIC = 8
+
+
 def select_question(state: QuizState) -> QuizState:
     """
     Picks the next question for the current topic at its current level.
-    If no questions are left in the pool, closes the topic as mastered.
+
+    Two exit conditions before picking a question:
+      1. Question cap: if the student has been asked 8+ questions on this
+         topic without mastering it, close it as Weak to prevent infinite
+         bouncing between levels.
+      2. Pool exhausted: if no unused questions remain, close as Mastered.
     """
     topic_name = state["current_topic"]
     if topic_name is None:
         return {**state, "quiz_complete": True}
 
     topic_state = state["topic_states"][topic_name]
+
+    # ── Cap: too many questions on this topic → close as Weak ────────────────
+    if topic_state.questions_asked >= MAX_QUESTIONS_PER_TOPIC:
+        topic_state.status = "weak"
+        next_topic = _find_next_active_topic(state)
+        return {
+            **state,
+            "current_topic": next_topic,
+            "current_question": None,
+        }
+
     already_asked = [r.question_id for r in state["question_history"]]
 
     question = _pick_question(
@@ -138,6 +157,8 @@ def select_question(state: QuizState) -> QuizState:
             "current_question": None,
         }
 
+    # Track how many questions this topic has consumed
+    topic_state.questions_asked += 1
     return {**state, "current_question": question}
 
 
@@ -223,13 +244,13 @@ def route_answer(state: QuizState) -> QuizState:
 
         # Condition 3: Wrong at Easy level
         if topic_state.current_level == "easy":
-            if topic_state.demotion_count >= 2:
-                # Condition 5 equivalent at easy: 3rd failure → WEAK
+            if topic_state.demotion_count >= 1:
+                # 2nd failure at Easy → WEAK (student has already had one retry)
                 topic_state.status = "weak"
                 next_topic = _find_next_active_topic(state)
                 return {**state, "current_topic": next_topic}
             else:
-                # Stay at easy, increment lifetime demotion counter
+                # 1st failure at Easy → stay and give one retry
                 topic_state.demotion_count += 1
                 return {**state}
 

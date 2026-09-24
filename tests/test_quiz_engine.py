@@ -12,7 +12,10 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from core.models import TopicState, Question
-from quizmaster.quiz_engine import _level_up, _level_down, route_answer
+from quizmaster.quiz_engine import (
+    _level_up, _level_down, route_answer,
+    select_question, MAX_QUESTIONS_PER_TOPIC,
+)
 
 
 # ── Shared test fixtures ──────────────────────────────────────────────────────
@@ -119,29 +122,59 @@ def test_condition_1_master():
     assert updated.status == "mastered", "Should be mastered"
 
 
-# ── Test 7: Condition 3 — Weak at easy after 2 demotions ─────────────────────
+# ── Test 7: Condition 3 — Weak at easy after 2nd failure (demotion_count=1) ──
 
 def test_condition_3_weak_at_easy():
+    # demotion_count=1 means the student already had their one retry
     ts = TopicState(
         topic="Rational Numbers", subject="Mathematics",
-        current_level="easy", status="easy", demotion_count=2
+        current_level="easy", status="easy", demotion_count=1
     )
     result = route_answer(make_state(ts, is_correct=False))
     updated = result["topic_states"]["Rational Numbers"]
-    assert updated.status == "weak", "Should be weak at easy level"
+    assert updated.status == "weak", "Should be weak after 2nd failure at easy"
 
 
-# ── Test 8: Demotion count increments at easy ────────────────────────────────
+# ── Test 8: First failure at easy — stay and give one retry ──────────────────
 
 def test_demotion_count_increments_at_easy():
+    # First wrong at easy (demotion_count=0) → stay, increment to 1
     ts = TopicState(
         topic="Rational Numbers", subject="Mathematics",
         current_level="easy", status="easy", demotion_count=0
     )
     result = route_answer(make_state(ts, is_correct=False))
     updated = result["topic_states"]["Rational Numbers"]
-    assert updated.demotion_count == 1, "Demotion count should increment"
-    assert updated.current_level == "easy", "Should stay at easy"
+    assert updated.demotion_count == 1, "Demotion count should increment to 1"
+    assert updated.current_level == "easy", "Should stay at easy for one retry"
+    assert updated.status != "weak", "Should not be weak yet after first failure"
+
+
+# ── Test 9: Question cap — Weak after 8 questions on a topic ─────────────────
+
+def test_question_cap_marks_topic_weak():
+    """
+    If a student has been asked MAX_QUESTIONS_PER_TOPIC questions without
+    mastering the topic, select_question closes it as Weak.
+    """
+    ts = TopicState(
+        topic="Rational Numbers", subject="Mathematics",
+        current_level="easy", status="easy",
+        questions_asked=MAX_QUESTIONS_PER_TOPIC,
+    )
+    state = {
+        "student_name": "TestStudent",
+        "subject": "Mathematics",
+        "topic_states": {"Rational Numbers": ts},
+        "question_pool": {},
+        "question_history": [],
+        "current_topic": "Rational Numbers",
+        "current_question": None,
+        "quiz_complete": False,
+    }
+    result = select_question(state)
+    updated = result["topic_states"]["Rational Numbers"]
+    assert updated.status == "weak", "Should be weak after hitting the question cap"
 
 
 # ── Run all tests ─────────────────────────────────────────────────────────────
@@ -156,4 +189,5 @@ if __name__ == "__main__":
     test_condition_1_master()
     test_condition_3_weak_at_easy()
     test_demotion_count_increments_at_easy()
+    test_question_cap_marks_topic_weak()
     print("All quiz engine tests passed!")
