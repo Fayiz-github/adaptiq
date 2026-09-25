@@ -21,7 +21,7 @@ import random
 from typing import Optional
 from langgraph.graph import StateGraph, END
 
-from core.models import (
+from core.models import (  # type: ignore[import-untyped,import-not-found]
     QuizState,
     TopicState,
     Question,
@@ -282,31 +282,29 @@ def check_completion(state: QuizState) -> QuizState:
     return {**state, "quiz_complete": all_closed}
 
 
-# ── Router: decide the next node after routing ───────────────────────────────
+# ── Router: decide the entry point on each graph call ─────────────────────────
 
-def should_continue(state: QuizState) -> str:
-    """
-    Conditional edge function used by LangGraph.
-    Returns "end" if the quiz is complete, "select_question" otherwise.
-    """
-    if state.get("quiz_complete") or state.get("current_topic") is None:
-        return "end"
+def _check_and_route(state: QuizState) -> str:
+    """Initialises topic states on the very first invoke, then routes directly to question selection."""
+    if not state.get("topic_states"):
+        return "start_quiz"
     return "select_question"
 
 
 # ── Build the LangGraph state machine ────────────────────────────────────────
 
-def build_quiz_graph() -> StateGraph:
+def build_quiz_graph():
     """
     Assembles and compiles the quiz state machine.
 
     Nodes:
-      start_quiz       → initialises topic states
+      start_quiz       → initialises topic states on first call
       select_question  → picks the next question from the pool
-      check_completion → decides whether to end or continue
+      check_completion → updates quiz_complete status
 
-    The check_answer and route_answer nodes are called manually
-    by QuizmasterAgent because they need external input (the student's answer).
+    Each graph.invoke() call selects ONE question and checks completion,
+    then yields control back to QuizmasterAgent to interactively collect
+    the student's answer.
     """
     graph = StateGraph(QuizState)
 
@@ -314,17 +312,15 @@ def build_quiz_graph() -> StateGraph:
     graph.add_node("select_question", select_question)
     graph.add_node("check_completion", check_completion)
 
-    graph.set_entry_point("start_quiz")
-    graph.add_edge("start_quiz", "select_question")
-    graph.add_edge("select_question", "check_completion")
-
-    graph.add_conditional_edges(
-        "check_completion",
-        should_continue,
+    graph.set_conditional_entry_point(
+        _check_and_route,
         {
+            "start_quiz": "start_quiz",
             "select_question": "select_question",
-            "end": END,
         },
     )
+    graph.add_edge("start_quiz", "select_question")
+    graph.add_edge("select_question", "check_completion")
+    graph.add_edge("check_completion", END)
 
     return graph.compile()
