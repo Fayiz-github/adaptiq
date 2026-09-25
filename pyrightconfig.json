@@ -1,0 +1,16 @@
+{
+  "pythonVersion": "3.13",
+  "venvPath": ".",
+  "venv": ".venv",
+  "pythonPath": ".venv/Scripts/python.exe",
+  "extraPaths": [
+    "c:/Users/moham/agent2agent"
+  ],
+  "include": [
+    "core",
+    "quizmaster",
+    "evaluator",
+    "tests",
+    "src"
+  ]
+}

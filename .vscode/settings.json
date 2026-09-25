@@ -1,0 +1,6 @@
+{
+  "python.analysis.extraPaths": [
+    "c:/Users/moham/agent2agent"
+  ],
+  "python.defaultInterpreterPath": "c:/Users/moham/agent2agent/.venv/Scripts/python.exe"
+}
