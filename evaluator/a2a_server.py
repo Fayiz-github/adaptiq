@@ -1,32 +1,61 @@
 """
 a2a_server.py
 -------------
-FastAPI HTTP server for Agent 2 (Evaluator).
-Receives quiz session packets from Agent 1 (Quizmaster), runs
-pedagogical evaluation using Gemini, and saves results to SQLite.
+FastAPI HTTP Server for Agent 2 (Evaluator Agent).
+
+Architecture & Role:
+- Serves as the receiving endpoint in the Agent-to-Agent (A2A) protocol.
+- Accepts telemetry data (A2APacket) from Agent 1 (Quizmaster) via HTTP POST.
+- Executes comprehensive pedagogical diagnosis using LLM (Gemini / OpenAI).
+- Formats a human-readable ASCII report card with pedagogical badges and cognitive study advice.
+- Persists finalized session records into the SQLite database (results.db).
+- Returns the generated evaluation report back to the calling client.
 """
 
 import sys
+from pathlib import Path
 from typing import Any
 from fastapi import FastAPI, HTTPException
 import uvicorn
 
+# ---------------------------------------------------------------------------
+# Cross-Platform Console Encoding Setup
+# ---------------------------------------------------------------------------
+# Ensure standard output supports UTF-8 characters (useful for Windows terminals)
 if hasattr(sys.stdout, "reconfigure"):
     getattr(sys.stdout, "reconfigure")(encoding="utf-8", errors="replace")
 
+# Ensure repository root is on sys.path for direct script execution
+_REPO_ROOT = str(Path(__file__).resolve().parent.parent)
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
+# Internal project imports: configurations, database layer, and evaluator agent
 from core.config import EVALUATOR_HOST, EVALUATOR_PORT
 from core.database import save_session
 from evaluator.agent import EvaluatorAgent
 
+# ---------------------------------------------------------------------------
+# FastAPI Application Initialization
+# ---------------------------------------------------------------------------
+# Initialize the web application instance with metadata for OpenAPI/Swagger docs
 app = FastAPI(
     title="Adaptiq Evaluator Agent",
-    description="A2A Server for evaluating student quiz sessions.",
+    description="A2A Server for evaluating student quiz sessions and diagnosing learning gaps.",
+    version="1.0.0",
 )
 
 
+# ===========================================================================
+# Health & Status Endpoints
+# ===========================================================================
+
 @app.get("/")
-def root():
-    """Basic health check endpoint."""
+def root() -> dict[str, str]:
+    """
+    Root discovery endpoint.
+    Allows clients or monitoring tools to verify server identity and availability.
+    """
     return {
         "service": "Adaptiq Evaluator Agent (A2A Server)",
         "status": "online",
@@ -35,43 +64,75 @@ def root():
 
 
 @app.get("/health")
-def health_check():
-    """Health check endpoint."""
+def health_check() -> dict[str, str]:
+    """
+    Liveness probe / health check endpoint.
+    Used for monitoring service uptime in production or microservice setups.
+    """
     return {"status": "healthy"}
 
 
+# ===========================================================================
+# Core A2A Evaluation Endpoint
+# ===========================================================================
+
 @app.post("/evaluate")
-def evaluate_session(packet: dict[str, Any]):
+def evaluate_session(packet: dict[str, Any]) -> dict[str, Any]:
     """
-    Receives an A2A packet from Quizmaster, evaluates the student,
-    persists the session to the database, and returns the report.
+    Primary Agent-to-Agent (A2A) evaluation handler.
+    
+    Workflow:
+    1. Parse and validate the incoming A2APacket payload from Quizmaster.
+    2. Extract student performance metrics and topic progression states.
+    3. Categorize topics into 'mastered' vs 'weak' based on difficulty levels reached.
+    4. Compute overall accuracy percentage with zero-division safeguard.
+    5. Invoke EvaluatorAgent (LLM) to perform deep pedagogical diagnosis.
+    6. Assemble an ASCII report card with clear headers, scores, and mentor notes.
+    7. Persist session data to the SQLite database (results.db).
+    8. Return JSON response containing the report card and structured feedback.
     """
-    packet_id = packet.get("packet_id", "")
-    student_name = packet.get("student_name", "Student")
-    subject = packet.get("subject", "Mathematics")
-    total_correct = packet.get("total_correct", 0)
-    total_questions = packet.get("total_questions", 0)
-    topic_states = packet.get("topic_states", {})
+    # -----------------------------------------------------------------------
+    # Step 1: Extract packet fields with safe defaults
+    # -----------------------------------------------------------------------
+    packet_id: str = packet.get("packet_id", "")
+    student_name: str = packet.get("student_name", "Student")
+    subject: str = packet.get("subject", "Mathematics")
+    total_correct: int = packet.get("total_correct", 0)
+    total_questions: int = packet.get("total_questions", 0)
+    topic_states: dict[str, Any] = packet.get("topic_states", {})
 
+    # -----------------------------------------------------------------------
+    # Step 2: Validate required payload fields
+    # -----------------------------------------------------------------------
     if not packet_id:
-        raise HTTPException(status_code=400, detail="Missing packet_id in request payload.")
+        raise HTTPException(
+            status_code=400,
+            detail="Missing packet_id in request payload. Valid A2APacket required."
+        )
 
-    # Determine mastered and weak topics from topic_states
-    mastered_topics = []
-    weak_topics = []
+    # -----------------------------------------------------------------------
+    # Step 3: Analyze topic states and map learning tiers
+    # -----------------------------------------------------------------------
+    mastered_topics: list[str] = []
+    weak_topics: list[str] = []
+    topic_details_list: list[str] = []
 
-    topic_details_list = []
+    # Iterate through each topic state sent by Quizmaster
     for topic, state in topic_states.items():
         status = state.get("status", "") if isinstance(state, dict) else str(state)
+        
+        # Categorize into mastered vs weak / in-progress
         if status == "mastered":
             mastered_topics.append(topic)
-        elif status == "weak" or status != "mastered":
+        else:
             weak_topics.append(topic)
 
+        # Build descriptive breakdown showing exact progress and accuracy
         if isinstance(state, dict):
             lvl = state.get("current_level", "")
             c = state.get("correct_answers", 0)
             q = state.get("questions_asked", 0)
+            
             if status == "mastered":
                 desc = f"Mastered (Cleared Easy, Medium, and Hard; {c}/{q} correct)"
             elif lvl == "hard":
@@ -80,25 +141,35 @@ def evaluate_session(packet: dict[str, Any]):
                 desc = f"At Medium (Passed Easy, needs work to clear Medium; {c}/{q} correct)"
             else:
                 desc = f"At Easy (Base not set yet, needs foundational review; {c}/{q} correct)"
+                
             topic_details_list.append(f"  - {topic}: {desc}")
 
-    topic_details = "\n".join(topic_details_list)
+    # Combine topic notes into a single multi-line string for LLM context
+    topic_details: str = "\n".join(topic_details_list)
 
-    # Calculate overall percentage
-    pct = (total_correct / max(1, total_questions)) * 100
-    score_summary = f"{total_correct}/{total_questions} ({pct:.1f}%)"
+    # -----------------------------------------------------------------------
+    # Step 4: Calculate overall student accuracy percentage
+    # -----------------------------------------------------------------------
+    # Safeguard against division by zero if total_questions is 0
+    pct: float = (total_correct / max(1, total_questions)) * 100
+    score_summary: str = f"{total_correct}/{total_questions} ({pct:.1f}%)"
 
-    # Run AI evaluation using EvaluatorAgent
+    # -----------------------------------------------------------------------
+    # Step 5: Invoke AI Evaluator Agent
+    # -----------------------------------------------------------------------
+    # EvaluatorAgent synthesizes student data and generates empathetic mentor advice
     evaluator = EvaluatorAgent(student_name=student_name, subject=subject)
-    feedback = evaluator.evaluate(
+    feedback: str = evaluator.evaluate(
         score_summary=score_summary,
         mastered_topics=mastered_topics,
         weak_topics=weak_topics,
         topic_level_notes=topic_details,
     )
 
-    # Format the complete report card
-    report_lines = [
+    # -----------------------------------------------------------------------
+    # Step 6: Construct formatted ASCII Report Card
+    # -----------------------------------------------------------------------
+    report_lines: list[str] = [
         "=" * 60,
         "          STUDENT PERFORMANCE REPORT CARD",
         "=" * 60,
@@ -117,9 +188,12 @@ def evaluate_session(packet: dict[str, Any]):
         feedback,
         "=" * 60,
     ]
-    report_card = "\n".join(report_lines)
+    report_card: str = "\n".join(report_lines)
 
-    # Save to SQLite database
+    # -----------------------------------------------------------------------
+    # Step 7: Persist session record to SQLite database
+    # -----------------------------------------------------------------------
+    # Wrapped in try-except so database write errors do not crash the API response
     try:
         save_session(
             packet_id=packet_id,
@@ -134,6 +208,9 @@ def evaluate_session(packet: dict[str, Any]):
     except Exception as db_err:
         print(f"[Warning] Failed to save session to DB: {db_err}")
 
+    # -----------------------------------------------------------------------
+    # Step 8: Return structured response back to Agent 1 (Quizmaster)
+    # -----------------------------------------------------------------------
     return {
         "status": "success",
         "packet_id": packet_id,
@@ -142,11 +219,21 @@ def evaluate_session(packet: dict[str, Any]):
     }
 
 
-def start_server():
-    """Starts the Uvicorn web server."""
+# ===========================================================================
+# Server Entrypoint
+# ===========================================================================
+
+def start_server() -> None:
+    """
+    Starts the Uvicorn ASGI server with host and port from core.config.
+    Runs synchronously and listens for incoming A2A HTTP requests.
+    """
     print(f"Starting Evaluator A2A Server on http://{EVALUATOR_HOST}:{EVALUATOR_PORT}...")
     uvicorn.run(app, host=EVALUATOR_HOST, port=EVALUATOR_PORT)
 
 
 if __name__ == "__main__":
+    # Allows starting the server directly via:
+    # uv run python -m evaluator.a2a_server
     start_server()
+
