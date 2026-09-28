@@ -23,18 +23,19 @@ def _connect() -> sqlite3.Connection:
     return conn
 
 
-def get_past_weak_topics(student_name: str, subject: str) -> list[str]:
+def get_past_weak_topics(email: str, subject: str) -> list[str]:
     """
     Find topics the student struggled with across past sessions.
+    Queries by email to isolate memory between students with the same name.
     Returns a unique list of weak topic names.
     """
     conn = _connect()
     try:
         cursor = conn.execute("""
             SELECT weak_topics FROM quiz_sessions
-            WHERE LOWER(student_name) = LOWER(?) AND LOWER(subject) = LOWER(?)
+            WHERE LOWER(email) = LOWER(?) AND LOWER(subject) = LOWER(?)
             ORDER BY created_at DESC
-        """, (student_name, subject))
+        """, (email.strip(), subject))
 
         seen = set()
         weak_topics = []
@@ -48,16 +49,16 @@ def get_past_weak_topics(student_name: str, subject: str) -> list[str]:
         conn.close()
 
 
-def get_latest_session(student_name: str, subject: str) -> dict | None:
-    """Fetch the most recent session for this student and subject."""
+def get_latest_session(email: str, subject: str) -> dict | None:
+    """Fetch the most recent session for this student and subject by email."""
     conn = _connect()
     try:
         cursor = conn.execute("""
             SELECT * FROM quiz_sessions
-            WHERE LOWER(student_name) = LOWER(?) AND LOWER(subject) = LOWER(?)
+            WHERE LOWER(email) = LOWER(?) AND LOWER(subject) = LOWER(?)
             ORDER BY created_at DESC
             LIMIT 1
-        """, (student_name, subject))
+        """, (email.strip(), subject))
 
         row = cursor.fetchone()
         if not row:
@@ -71,9 +72,9 @@ def get_latest_session(student_name: str, subject: str) -> dict | None:
         conn.close()
 
 
-def get_improvement_summary(student_name: str, subject: str) -> dict:
+def get_improvement_summary(email: str, subject: str) -> dict:
     """
-    Summarize student score progression over time.
+    Summarize student score progression over time by email.
     Returns attempt count, history of scores, and whether they are improving.
     """
     conn = _connect()
@@ -81,9 +82,9 @@ def get_improvement_summary(student_name: str, subject: str) -> dict:
         cursor = conn.execute("""
             SELECT total_correct, total_questions, created_at
             FROM quiz_sessions
-            WHERE LOWER(student_name) = LOWER(?) AND LOWER(subject) = LOWER(?)
+            WHERE LOWER(email) = LOWER(?) AND LOWER(subject) = LOWER(?)
             ORDER BY created_at ASC
-        """, (student_name, subject))
+        """, (email.strip(), subject))
 
         rows = cursor.fetchall()
         if not rows:

@@ -11,8 +11,9 @@ from evaluator.report_generator import generate_evaluation_report
 class EvaluatorAgent:
     """Evaluates student performance using historical context and AI."""
 
-    def __init__(self, student_name: str, subject: str):
+    def __init__(self, student_name: str, subject: str, email: str = ""):
         self.student_name = student_name
+        self.email = email.strip() or student_name
         self.subject = subject
 
     def evaluate(
@@ -23,8 +24,8 @@ class EvaluatorAgent:
         topic_level_notes: str = "",
     ) -> str:
         """Generates qualitative feedback incorporating past session trends."""
-        past_weak = get_past_weak_topics(self.student_name, self.subject)
-        summary = get_improvement_summary(self.student_name, self.subject)
+        past_weak = get_past_weak_topics(self.email, self.subject)
+        summary = get_improvement_summary(self.email, self.subject)
 
         history_note = ""
         if past_weak:

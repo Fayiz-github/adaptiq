@@ -80,6 +80,7 @@ class QuizState(TypedDict):
     LangGraph passes this dict between every node.
     """
     student_name: str
+    email: str
     subject: str
     topic_states: dict[str, TopicState]      # topic name → TopicState
     question_pool: dict[str, list[Question]] # topic name → list of Questions
@@ -109,6 +110,7 @@ class A2APacket:
     total_correct: int
     total_questions: int
     prerequisite_map: dict[str, list[str]]  # topic → list of prerequisite topics
+    email: str = ""                         # Unique email to isolate student accounts
 
 
 # ── Prerequisite Map — used by Agent 2 for cascade analysis ──────────────────

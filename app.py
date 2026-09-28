@@ -10,11 +10,15 @@ Features:
 - Orchestration of live adaptive quizzes and instantaneous report card presentations.
 """
 
+import re
 import sys
 
 # Ensure stdout uses UTF-8 encoding on Windows to prevent UnicodeEncodeError with emojis
 if hasattr(sys.stdout, "reconfigure"):
     getattr(sys.stdout, "reconfigure")(encoding="utf-8", errors="replace")
+
+# Standard email format validator (e.g., user@domain.com)
+EMAIL_PATTERN = re.compile(r"^[\w\.-]+@[\w\.-]+\.[a-zA-Z]{2,}$")
 
 from core.database import get_student_history, create_tables
 from quizmaster.agent import QuizmasterAgent
@@ -24,23 +28,24 @@ from quizmaster.agent import QuizmasterAgent
 # STUDENT REPORT HISTORY VIEWER
 # =============================================================================
 
-def _view_past_reports(student_name: str) -> None:
+def _view_past_reports(email: str, student_name: str) -> None:
     """
     Retrieves and displays past quiz attempts and evaluated report cards for the given student.
 
     Enforces strict student privacy: queries database exclusively for records where
-    LOWER(student_name) matches the logged-in student.
+    LOWER(email) matches the logged-in student's email.
 
     Args:
-        student_name (str): The active student's name.
+        email (str): The active student's email.
+        student_name (str): The active student's display name.
     """
-    history = get_student_history(student_name)
+    history = get_student_history(email)
     if not history:
-        print(f"\n[Notice] No past quiz sessions found for '{student_name}'.")
+        print(f"\n[Notice] No past quiz sessions found for '{student_name}' ({email}).")
         print("Complete a quiz first to see your evaluated report card!")
         return
 
-    print(f"\nPast Quiz History for {student_name}:")
+    print(f"\nPast Quiz History for {student_name} ({email}):")
     print("-" * 60)
     for idx, session in enumerate(history, 1):
         date_str = session["created_at"][:10]
@@ -66,7 +71,7 @@ def _view_past_reports(student_name: str) -> None:
 # ADAPTIVE QUIZ RUNNER
 # =============================================================================
 
-def _take_quiz(student_name: str) -> None:
+def _take_quiz(student_name: str, email: str) -> None:
     """
     Prompts the student to choose an academic subject and launches an adaptive quiz session.
 
@@ -78,6 +83,7 @@ def _take_quiz(student_name: str) -> None:
 
     Args:
         student_name (str): The active student's name.
+        email (str): The active student's email address.
     """
     print("\nSubjects:")
     print("  1. Mathematics")
@@ -117,7 +123,7 @@ def _take_quiz(student_name: str) -> None:
             print(f"\n[Warning] '{subject_input}' is not a valid subject! Allowed options are: 1 (Mathematics), 2 (Biology), 3 (Chemistry), or 'b' (Back).")
 
     # Instantiate QuizmasterAgent and execute the adaptive quiz loop
-    agent = QuizmasterAgent(student_name=student_name, subject=subject)
+    agent = QuizmasterAgent(student_name=student_name, subject=subject, email=email)
     report = agent.run()
     print("\n" + report)
 
@@ -137,19 +143,21 @@ def main() -> None:
     print("         Adaptiq Adaptive Quiz Platform")
     print("=" * 60)
 
-    # Prompt student for their name
+    # Prompt student for their name and unique email
     try:
-        student_name = input("Enter your name: ").strip()
+        student_name = input("Enter your name: ").strip() or "Student"
+        while True:
+            email = input("Enter your email: ").strip()
+            if EMAIL_PATTERN.match(email):
+                break
+            print("[Warning] Please enter a valid email address (e.g. name@example.com).")
     except (KeyboardInterrupt, EOFError):
         print("\nGoodbye!\n")
         return
 
-    if not student_name:
-        student_name = "Student"
-
     # Interactive main menu event loop
     while True:
-        print(f"\nWelcome, {student_name}! What would you like to do?")
+        print(f"\nWelcome, {student_name} ({email})! What would you like to do?")
         print("  1. Start Adaptive Quiz")
         print("  2. View My Past Report Cards")
         print("  3. Exit")
@@ -162,9 +170,9 @@ def main() -> None:
 
         # Dispatch chosen user action
         if choice == "1":
-            _take_quiz(student_name)
+            _take_quiz(student_name, email)
         elif choice == "2":
-            _view_past_reports(student_name)
+            _view_past_reports(email, student_name)
         elif choice in ("3", "q", "quit", "exit"):
             print(f"\nGoodbye, {student_name}! Keep learning.\n")
             break

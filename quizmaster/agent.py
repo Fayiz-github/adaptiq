@@ -47,19 +47,21 @@ class QuizmasterAgent:
         topics (list[str]): Ordered list of curriculum topics to assess.
     """
 
-    def __init__(self, student_name: str, subject: str):
+    def __init__(self, student_name: str, subject: str, email: str = ""):
         """
         Initializes the Quizmaster session, validates configuration, and prepares database tables.
 
         Args:
             student_name (str): The student's name (defaults to 'Student' if whitespace/empty).
             subject (str): The selected subject (defaults to 'Mathematics' if whitespace/empty).
+            email (str): The unique student email address for session isolation.
         """
         # Validate that required environment variables are set before quiz begins
         validate_config()
 
         # Sanitize and assign core student identity attributes
         self.student_name = student_name.strip() or "Student"
+        self.email = email.strip() or self.student_name
         self.subject = subject.strip() or "Mathematics"
         self.session_id = str(uuid.uuid4())
 
@@ -447,6 +449,7 @@ class QuizmasterAgent:
                 packet_id=self.session_id,
                 timestamp=datetime.now(timezone.utc).isoformat(),
                 student_name=self.student_name,
+                email=self.email,
                 subject=self.subject,
                 topic_states={
                     t: {
@@ -486,7 +489,7 @@ class QuizmasterAgent:
         try:
             from evaluator.agent import EvaluatorAgent
             print("\n[Evaluator] Reviewing performance and learning history...")
-            evaluator = EvaluatorAgent(student_name=self.student_name, subject=self.subject)
+            evaluator = EvaluatorAgent(student_name=self.student_name, subject=self.subject, email=self.email)
             pct_str = f"{(total_correct / max(1, total_questions)) * 100:.1f}%"
 
             # Build detailed per-topic context so the Evaluator knows the exact tier reached
@@ -513,7 +516,7 @@ class QuizmasterAgent:
             if feedback and not feedback.startswith("[Evaluator Notice]"):
                 report_card += f"\n\nMENTOR'S PERSONALIZED FEEDBACK:\n{'-'*60}\n{feedback}\n{'='*60}"
         except Exception:
-            pass  # Fallback: report_card already contains rich local learning guidance
+            pass  # Fall practical: report_card already contains rich local learning guidance
 
         # ---------------------------------------------------------------------
         # Phase 3: SQLite Persistence
@@ -522,6 +525,7 @@ class QuizmasterAgent:
             save_session(
                 packet_id=self.session_id,
                 student_name=self.student_name,
+                email=self.email,
                 subject=self.subject,
                 total_correct=total_correct,
                 total_questions=total_questions,
@@ -539,11 +543,12 @@ class QuizmasterAgent:
 if __name__ == "__main__":
     try:
         student = input("Enter student name: ").strip() or "Student"
+        email = input("Enter student email: ").strip() or f"{student.lower()}@example.com"
         subject = input("Choose subject (Mathematics, Biology, Chemistry) [Mathematics]: ").strip() or "Mathematics"
     except (EOFError, KeyboardInterrupt):
         print("\nSession aborted.")
         sys.exit(0)
 
-    agent = QuizmasterAgent(student_name=student, subject=subject)
+    agent = QuizmasterAgent(student_name=student, subject=subject, email=email)
     report = agent.run()
     print("\n" + report)

@@ -34,6 +34,7 @@ def _connect() -> sqlite3.Connection:
 def create_tables() -> None:
     """
     Initializes the database schema by creating the 'quiz_sessions' table if not present.
+    Ensures 'email' column and index exist for student privacy separation.
     """
     conn = _connect()
     try:
@@ -43,6 +44,7 @@ def create_tables() -> None:
                     id              INTEGER PRIMARY KEY AUTOINCREMENT,
                     packet_id       TEXT    NOT NULL UNIQUE,
                     student_name    TEXT    NOT NULL,
+                    email           TEXT    NOT NULL DEFAULT '',
                     subject         TEXT    NOT NULL,
                     total_correct   INTEGER NOT NULL,
                     total_questions INTEGER NOT NULL,
@@ -52,6 +54,12 @@ def create_tables() -> None:
                     created_at      TEXT    NOT NULL
                 )
             """)
+            # Migration check: Ensure email column exists on existing databases
+            cursor = conn.execute("PRAGMA table_info(quiz_sessions)")
+            columns = [row[1] for row in cursor.fetchall()]
+            if "email" not in columns:
+                conn.execute("ALTER TABLE quiz_sessions ADD COLUMN email TEXT NOT NULL DEFAULT ''")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_quiz_sessions_email ON quiz_sessions(email)")
     finally:
         conn.close()
 
@@ -63,6 +71,7 @@ def create_tables() -> None:
 def save_session(
     packet_id: str,
     student_name: str,
+    email: str,
     subject: str,
     total_correct: int,
     total_questions: int,
@@ -76,6 +85,7 @@ def save_session(
     Args:
         packet_id (str): Unique UUID4 identifier for the quiz session.
         student_name (str): The student's display name.
+        email (str): The student's unique email address.
         subject (str): The academic subject tested.
         total_correct (int): Count of correct answers.
         total_questions (int): Total questions attempted.
@@ -88,12 +98,13 @@ def save_session(
         with conn:
             conn.execute("""
                 INSERT OR REPLACE INTO quiz_sessions
-                    (packet_id, student_name, subject, total_correct, total_questions,
+                    (packet_id, student_name, email, subject, total_correct, total_questions,
                      mastered_topics, weak_topics, report_card, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 packet_id,
                 student_name,
+                email.strip().lower(),
                 subject,
                 total_correct,
                 total_questions,
@@ -122,14 +133,14 @@ def _format_row(row: sqlite3.Row) -> dict:
     return data
 
 
-def get_student_history(student_name: str) -> list[dict]:
+def get_student_history(email: str) -> list[dict]:
     """
-    Retrieves all past quiz attempts for a specific student, ordered newest first.
+    Retrieves all past quiz attempts for a specific student email, ordered newest first.
 
     Guarantees strict privacy: students only see their own sessions.
 
     Args:
-        student_name (str): The student's name to filter by.
+        email (str): The unique student email to filter by.
 
     Returns:
         list[dict]: Chronological list of past session records.
@@ -137,8 +148,8 @@ def get_student_history(student_name: str) -> list[dict]:
     conn = _connect()
     try:
         cursor = conn.execute(
-            "SELECT * FROM quiz_sessions WHERE LOWER(student_name) = LOWER(?) ORDER BY created_at DESC",
-            (student_name,),
+            "SELECT * FROM quiz_sessions WHERE LOWER(email) = LOWER(?) ORDER BY created_at DESC",
+            (email.strip(),),
         )
         return [_format_row(row) for row in cursor.fetchall()]
     finally:

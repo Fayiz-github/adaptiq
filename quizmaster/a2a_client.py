@@ -120,6 +120,7 @@ if __name__ == "__main__":
         packet_id=str(uuid.uuid4()),
         timestamp=datetime.now(timezone.utc).isoformat(),
         student_name="Test Student",
+        email="test@example.com",
         subject="Mathematics",
         topic_states={
             "Rational Numbers": {"status": "mastered", "correct_answers": 3, "questions_asked": 4},

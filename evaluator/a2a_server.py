@@ -96,6 +96,7 @@ def evaluate_session(packet: dict[str, Any]) -> dict[str, Any]:
     # -----------------------------------------------------------------------
     packet_id: str = packet.get("packet_id", "")
     student_name: str = packet.get("student_name", "Student")
+    email: str = packet.get("email", "")
     subject: str = packet.get("subject", "Mathematics")
     total_correct: int = packet.get("total_correct", 0)
     total_questions: int = packet.get("total_questions", 0)
@@ -158,7 +159,7 @@ def evaluate_session(packet: dict[str, Any]) -> dict[str, Any]:
     # Step 5: Invoke AI Evaluator Agent
     # -----------------------------------------------------------------------
     # EvaluatorAgent synthesizes student data and generates empathetic mentor advice
-    evaluator = EvaluatorAgent(student_name=student_name, subject=subject)
+    evaluator = EvaluatorAgent(student_name=student_name, subject=subject, email=email)
     feedback: str = evaluator.evaluate(
         score_summary=score_summary,
         mastered_topics=mastered_topics,
@@ -174,6 +175,7 @@ def evaluate_session(packet: dict[str, Any]) -> dict[str, Any]:
         "          STUDENT PERFORMANCE REPORT CARD",
         "=" * 60,
         f"Student Name:    {student_name}",
+        f"Email:           {email}" if email else "",
         f"Subject:         {subject}",
         f"Questions Asked: {total_questions}",
         f"Total Correct:   {total_correct}",
@@ -188,6 +190,8 @@ def evaluate_session(packet: dict[str, Any]) -> dict[str, Any]:
         feedback,
         "=" * 60,
     ]
+    # Remove any empty header lines
+    report_lines = [line for line in report_lines if line != ""]
     report_card: str = "\n".join(report_lines)
 
     # -----------------------------------------------------------------------
@@ -198,6 +202,7 @@ def evaluate_session(packet: dict[str, Any]) -> dict[str, Any]:
         save_session(
             packet_id=packet_id,
             student_name=student_name,
+            email=email,
             subject=subject,
             total_correct=total_correct,
             total_questions=total_questions,
