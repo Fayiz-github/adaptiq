@@ -22,3 +22,6 @@ results.db
 *.pdf
 *.xlsx
 *.pptx
+
+# Scratch scripts & temporary local files
+scratch/
