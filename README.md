@@ -92,7 +92,6 @@ Each curriculum topic begins at **Easy** and follows strict pedagogical rules:
 | **Observability** | [Langfuse](https://langfuse.com) (SDK v2/v4) | Distributed tracing, session tracking & cost attribution |
 | **Persistence** | SQLite (`sqlite3`) | Permanent storage of student attempts and episodic memory |
 | **Package Manager** | [uv](https://github.com/astral-sh/uv) | High-performance Python package management |
-| **Testing** | [pytest](https://pytest.org) | Unit and integration tests |
 
 ---
 
@@ -116,10 +115,6 @@ adaptiq/
 │   ├── report_generator.py    # Gemini report generator with study strategy guidance
 │   ├── agent.py               # EvaluatorAgent synthesising feedback + episodic memory
 │   └── a2a_server.py          # FastAPI ASGI microservice (@observe agent server)
-│
-├── tests/
-│   ├── test_database.py       # Session CRUD + episodic memory tests
-│   └── test_quiz_engine.py    # Adaptive state machine routing tests
 │
 ├── app.py                     # Main interactive CLI menu with student login & tracing
 ├── pyproject.toml             # uv dependencies & project metadata
@@ -165,13 +160,7 @@ LANGFUSE_BASE_URL=https://us.cloud.langfuse.com  # Use us.cloud.langfuse.com for
 > * Google Gemini: [aistudio.google.com](https://aistudio.google.com)
 > * Langfuse Cloud: [cloud.langfuse.com](https://cloud.langfuse.com) (Free 50,000 observations/month)
 
-### 3. Run the Test Suite
-
-```bash
-uv run pytest tests/ -v
-```
-
-### 4. Launch the Application
+### 3. Launch the Application
 
 You can run Adaptiq either in monolithic in-process mode or as two decoupled microservices:
 
@@ -200,15 +189,6 @@ Once a session is completed, open your [Langfuse Dashboard](https://cloud.langfu
 * **Users View:** Search by student email (`user_id = student@example.com`) to view lifetime quiz frequency, accuracy trends, and cumulative token spend.
 * **Sessions View:** Filter by `session_id` to inspect the complete multi-turn timeline—from the first Easy question through promotions to the final report card.
 * **Traces View:** Drill into individual LLM generations to verify prompt templates, token consumption, latency, and dual-provider fallback triggers.
-
----
-
-## 🧪 Test Coverage
-
-```
-tests/test_database.py      ✅ 9 tests — session CRUD + episodic memory queries
-tests/test_quiz_engine.py   ✅ 8 tests — adaptive routing & promotion conditions
-```
 
 ---
 
