@@ -26,6 +26,25 @@ EVALUATOR_HOST: str = os.getenv("EVALUATOR_HOST", "127.0.0.1")
 EVALUATOR_PORT: int = int(os.getenv("EVALUATOR_PORT", "8000"))
 EVALUATOR_URL: str = f"http://{EVALUATOR_HOST}:{EVALUATOR_PORT}/evaluate"
 
+# Langfuse Tracing & Observability settings (Free Cloud / Self-Hosted)
+LANGFUSE_PUBLIC_KEY: str = os.getenv("LANGFUSE_PUBLIC_KEY", "")
+LANGFUSE_SECRET_KEY: str = os.getenv("LANGFUSE_SECRET_KEY", "")
+LANGFUSE_BASE_URL: str = os.getenv("LANGFUSE_BASE_URL") or os.getenv("LANGFUSE_HOST") or "https://cloud.langfuse.com"
+
+# Ensure environment variables are synchronized for Langfuse SDK
+if LANGFUSE_PUBLIC_KEY:
+    os.environ["LANGFUSE_PUBLIC_KEY"] = LANGFUSE_PUBLIC_KEY
+if LANGFUSE_SECRET_KEY:
+    os.environ["LANGFUSE_SECRET_KEY"] = LANGFUSE_SECRET_KEY
+if LANGFUSE_BASE_URL:
+    os.environ["LANGFUSE_BASE_URL"] = LANGFUSE_BASE_URL
+    os.environ["LANGFUSE_HOST"] = LANGFUSE_BASE_URL
+
+
+def is_langfuse_configured() -> bool:
+    """Returns True if valid Langfuse API credentials are provided."""
+    return bool(LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY)
+
 
 def validate_config() -> None:
     """Check that required API keys are available before starting."""

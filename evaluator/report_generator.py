@@ -15,6 +15,17 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
 
+# Safe import for Langfuse tracing
+try:
+    from langfuse import observe
+    from langfuse.langchain import CallbackHandler
+except ImportError:
+    def observe(*args, **kwargs):
+        def decorator(func):
+            return func
+        return decorator
+    CallbackHandler = None
+
 from core.config import (
     GEMINI_API_KEY,
     GEMINI_MODEL,
@@ -63,6 +74,7 @@ def _extract_content_text(content: Any) -> str:
 # QUALITATIVE EVALUATION GENERATION
 # =============================================================================
 
+@observe(name="Generate Evaluation Report", as_type="generation")
 def generate_evaluation_report(
     student_name: str,
     subject: str,
@@ -138,6 +150,9 @@ Keep the tone inspiring, practical, and scientifically grounded in effective stu
         HumanMessage(content=user_prompt),
     ]
 
+    cb = [CallbackHandler()] if CallbackHandler is not None else []
+    config = {"callbacks": cb} if cb else None
+
     # 1. Try Gemini first (with strict 8s timeout to prevent freezing)
     if GEMINI_API_KEY:
         try:
@@ -147,7 +162,7 @@ Keep the tone inspiring, practical, and scientifically grounded in effective stu
                 temperature=0.7,
                 request_timeout=8.0,
             )
-            response = llm.invoke(messages)
+            response = llm.invoke(messages, config=config)
             text = _extract_content_text(response.content).strip()
             if text:
                 return text
@@ -163,7 +178,7 @@ Keep the tone inspiring, practical, and scientifically grounded in effective stu
                 temperature=0.7,
                 timeout=6.0,
             )
-            response = llm.invoke(messages)
+            response = llm.invoke(messages, config=config)
             text = _extract_content_text(response.content).strip()
             if text:
                 return text

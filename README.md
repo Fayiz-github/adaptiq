@@ -1,4 +1,4 @@
-﻿# 🧠 Adaptiq — AI-Powered Adaptive Quiz Platform
+# 🧠 Adaptiq — AI-Powered Adaptive Quiz Platform
 
 > Two AI agents, one mission: truly personalised learning.
 
@@ -89,6 +89,7 @@ Subjects supported: **Mathematics**, **Biology**, **Chemistry** (Class 8)
 | A2A Server | [FastAPI](https://fastapi.tiangolo.com) |
 | A2A Client | [httpx](https://www.python-httpx.org) |
 | Memory Store | SQLite (via `sqlite3`) |
+| Observability & Tracing | [Langfuse](https://langfuse.com) — Free Open-Source Session, Student & Multi-Agent Tracing |
 | Package Manager | [uv](https://github.com/astral-sh/uv) |
 | Testing | [pytest](https://pytest.org) |
 
@@ -142,9 +143,14 @@ Create a `.env` file in the project root:
 ```env
 GROQ_API_KEY=your_groq_key_here
 GEMINI_API_KEY=your_gemini_key_here
+
+# Optional: Langfuse Tracing & Observability (Free Cloud or Self-Hosted)
+LANGFUSE_PUBLIC_KEY=your_langfuse_public_key_here
+LANGFUSE_SECRET_KEY=your_langfuse_secret_key_here
+LANGFUSE_BASE_URL=https://us.cloud.langfuse.com # Use https://cloud.langfuse.com for EU or https://us.cloud.langfuse.com for US
 ```
 
-> Get your free keys: [Groq Console](https://console.groq.com) · [Google AI Studio](https://aistudio.google.com)
+> Get your free keys: [Groq Console](https://console.groq.com) · [Google AI Studio](https://aistudio.google.com) · [Langfuse Cloud](https://cloud.langfuse.com)
 
 ### 3. Run the tests
 

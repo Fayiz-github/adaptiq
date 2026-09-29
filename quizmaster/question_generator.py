@@ -34,6 +34,17 @@ from langchain_openai import ChatOpenAI
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage, SystemMessage
 
+# Safe import for Langfuse tracing
+try:
+    from langfuse import observe
+    from langfuse.langchain import CallbackHandler
+except ImportError:
+    def observe(*args, **kwargs):
+        def decorator(func):
+            return func
+        return decorator
+    CallbackHandler = None
+
 # Internal project configurations and data models
 from core.config import (
     OPENAI_API_KEY,
@@ -236,6 +247,7 @@ def _parse_and_validate_question(
 # Primary Generation API & Dual-LLM Resilience Pipeline
 # ===========================================================================
 
+@observe(name="Generate Dynamic Question")
 def generate_dynamic_question(
     subject: str,
     topic: str,
@@ -285,11 +297,14 @@ Return ONLY the JSON object with keys: question_text, options, correct_answer.""
     # -----------------------------------------------------------------------
     # Step 3: Attempt Generation via Primary Provider (OpenAI)
     # -----------------------------------------------------------------------
+    cb = [CallbackHandler()] if CallbackHandler is not None else []
+    config = {"callbacks": cb} if cb else None
+
     if OPENAI_API_KEY:
         for _ in range(2):
             try:
                 openai_llm = _get_openai_llm()
-                res = openai_llm.invoke(messages)
+                res = openai_llm.invoke(messages, config=config)
                 raw_text = _extract_content_text(res.content)
                 cleaned = _clean_json_string(raw_text)
                 data = json.loads(cleaned)
@@ -306,7 +321,7 @@ Return ONLY the JSON object with keys: question_text, options, correct_answer.""
         for _ in range(2):
             try:
                 gemini_llm = _get_gemini_llm()
-                res = gemini_llm.invoke(messages)
+                res = gemini_llm.invoke(messages, config=config)
                 raw_text = _extract_content_text(res.content)
                 cleaned = _clean_json_string(raw_text)
                 data = json.loads(cleaned)

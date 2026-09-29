@@ -30,6 +30,15 @@ from core.config import validate_config
 from core.database import create_tables, save_session
 from quizmaster.question_generator import generate_dynamic_question
 
+# Safe import for Langfuse tracing
+try:
+    from langfuse import observe
+except ImportError:
+    def observe(*args, **kwargs):
+        def decorator(func):
+            return func
+        return decorator
+
 
 # =============================================================================
 # QUIZMASTER AGENT IMPLEMENTATION
@@ -331,6 +340,10 @@ class QuizmasterAgent:
     # Quiz Session Orchestration
     # -------------------------------------------------------------------------
 
+    @observe(
+        name="Quizmaster Agent",
+        as_type="agent",
+    )
     def run(self) -> str:
         """
         Executes the end-to-end adaptive quiz workflow for all curriculum topics.

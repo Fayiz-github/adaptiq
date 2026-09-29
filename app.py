@@ -20,14 +20,41 @@ if hasattr(sys.stdout, "reconfigure"):
 # Standard email format validator (e.g., user@domain.com)
 EMAIL_PATTERN = re.compile(r"^[\w\.-]+@[\w\.-]+\.[a-zA-Z]{2,}$")
 
+# Ensure core configurations and Langfuse environment variables are initialized
+import core.config  # noqa: F401
 from core.database import get_student_history, create_tables
 from quizmaster.agent import QuizmasterAgent
+
+# Safe import for Langfuse tracing
+try:
+    from langfuse import observe, propagate_attributes, get_client
+except ImportError:
+    from contextlib import contextmanager
+
+    def observe(*args, **kwargs):
+        def decorator(func):
+            return func
+        return decorator
+
+    @contextmanager
+    def propagate_attributes(*args, **kwargs):
+        yield
+
+    def get_client():
+        class DummyClient:
+            def flush(self):
+                pass
+        return DummyClient()
 
 
 # =============================================================================
 # STUDENT REPORT HISTORY VIEWER
 # =============================================================================
 
+@observe(
+    as_type="tool",
+    name="View Past Student Reports",
+)
 def _view_past_reports(email: str, student_name: str) -> None:
     """
     Retrieves and displays past quiz attempts and evaluated report cards for the given student.
@@ -39,7 +66,12 @@ def _view_past_reports(email: str, student_name: str) -> None:
         email (str): The active student's email.
         student_name (str): The active student's display name.
     """
-    history = get_student_history(email)
+    with propagate_attributes(
+        user_id=email,
+        tags=["adaptiq", "history", f"user:{email}"],
+        metadata={"student_name": student_name, "email": email},
+    ):
+        history = get_student_history(email)
     if not history:
         print(f"\n[Notice] No past quiz sessions found for '{student_name}' ({email}).")
         print("Complete a quiz first to see your evaluated report card!")
@@ -122,10 +154,34 @@ def _take_quiz(student_name: str, email: str) -> None:
         else:
             print(f"\n[Warning] '{subject_input}' is not a valid subject! Allowed options are: 1 (Mathematics), 2 (Biology), 3 (Chemistry), or 'b' (Back).")
 
-    # Instantiate QuizmasterAgent and execute the adaptive quiz loop
-    agent = QuizmasterAgent(student_name=student_name, subject=subject, email=email)
-    report = agent.run()
+    @observe(name="Student Adaptive Quiz Session")
+    def _run_traced_quiz(s_name: str, s_email: str, s_subject: str) -> str:
+        agent = QuizmasterAgent(student_name=s_name, subject=s_subject, email=s_email)
+        with propagate_attributes(
+            user_id=s_email,
+            session_id=agent.session_id,
+            tags=["adaptiq", s_subject.lower(), f"user:{s_email}"],
+            metadata={
+                "student_name": s_name,
+                "email": s_email,
+                "subject": s_subject,
+            },
+        ):
+            return agent.run()
+
+    # Execute adaptive quiz session traced under student's identity in Langfuse
+    report = _run_traced_quiz(
+        s_name=student_name,
+        s_email=email,
+        s_subject=subject,
+    )
     print("\n" + report)
+
+    # Flush telemetry to Langfuse
+    try:
+        get_client().flush()
+    except Exception:
+        pass
 
 
 # =============================================================================

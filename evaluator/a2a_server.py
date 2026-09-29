@@ -35,6 +35,27 @@ from core.config import EVALUATOR_HOST, EVALUATOR_PORT
 from core.database import save_session
 from evaluator.agent import EvaluatorAgent
 
+# Safe import for Langfuse tracing
+try:
+    from langfuse import observe, propagate_attributes, get_client
+except ImportError:
+    from contextlib import contextmanager
+
+    def observe(*args, **kwargs):
+        def decorator(func):
+            return func
+        return decorator
+
+    @contextmanager
+    def propagate_attributes(*args, **kwargs):
+        yield
+
+    def get_client():
+        class DummyClient:
+            def flush(self):
+                pass
+        return DummyClient()
+
 # ---------------------------------------------------------------------------
 # FastAPI Application Initialization
 # ---------------------------------------------------------------------------
@@ -77,6 +98,7 @@ def health_check() -> dict[str, str]:
 # ===========================================================================
 
 @app.post("/evaluate")
+@observe(name="Evaluator Agent Server", as_type="agent")
 def evaluate_session(packet: dict[str, Any]) -> dict[str, Any]:
     """
     Primary Agent-to-Agent (A2A) evaluation handler.
@@ -110,6 +132,38 @@ def evaluate_session(packet: dict[str, Any]) -> dict[str, Any]:
             status_code=400,
             detail="Missing packet_id in request payload. Valid A2APacket required."
         )
+
+    with propagate_attributes(
+        user_id=email,
+        session_id=packet_id,
+        tags=["adaptiq", "evaluator-server", subject.lower(), f"user:{email}"],
+        metadata={
+            "student_name": student_name,
+            "email": email,
+            "subject": subject,
+            "session_id": packet_id,
+        },
+    ):
+        return _process_evaluation(
+            packet_id=packet_id,
+            student_name=student_name,
+            email=email,
+            subject=subject,
+            total_correct=total_correct,
+            total_questions=total_questions,
+            topic_states=topic_states,
+        )
+
+
+def _process_evaluation(
+    packet_id: str,
+    student_name: str,
+    email: str,
+    subject: str,
+    total_correct: int,
+    total_questions: int,
+    topic_states: dict[str, Any],
+) -> dict[str, Any]:
 
     # -----------------------------------------------------------------------
     # Step 3: Analyze topic states and map learning tiers
@@ -212,6 +266,12 @@ def evaluate_session(packet: dict[str, Any]) -> dict[str, Any]:
         )
     except Exception as db_err:
         print(f"[Warning] Failed to save session to DB: {db_err}")
+
+    # Flush telemetry to Langfuse
+    try:
+        get_client().flush()
+    except Exception:
+        pass
 
     # -----------------------------------------------------------------------
     # Step 8: Return structured response back to Agent 1 (Quizmaster)
