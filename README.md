@@ -162,9 +162,13 @@ LANGFUSE_BASE_URL=https://us.cloud.langfuse.com  # Use us.cloud.langfuse.com for
 
 ### 3. Launch the Application
 
-You can run Adaptiq either in monolithic in-process mode or as two decoupled microservices:
+#### Option A: Modern Streamlit Web Application (Recommended)
+```bash
+uv run streamlit run streamlit_app.py
+```
+Open [http://localhost:8501](http://localhost:8501) in your browser for the full glassmorphic interactive experience, live adaptive HUD, real-time feedback, interactive DAG explorer, and longitudinal analytics.
 
-#### Option A: Interactive CLI (All-in-One)
+#### Option B: Interactive CLI (All-in-One)
 ```bash
 uv run python app.py
 ```
