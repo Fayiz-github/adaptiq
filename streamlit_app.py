@@ -683,7 +683,7 @@ def start_new_quiz_session(subject: str, selected_topics: list[str]) -> None:
 
 
 def advance_to_next_question() -> None:
-    """Selects the active topic and generates a fresh dynamic MCQ."""
+    """Selects the active topic and generates a fresh, non-duplicate MCQ."""
     st.session_state.selected_option = None
     st.session_state.answer_submitted = False
     st.session_state.last_feedback = None
@@ -708,19 +708,35 @@ def advance_to_next_question() -> None:
         current_topic = topics[st.session_state.current_topic_idx]
         ts = st.session_state.topic_states[current_topic]
 
-    try:
-        q = generate_dynamic_question(
-            subject=st.session_state.quiz_subject,
-            topic=current_topic,
-            level=ts.current_level,
-            previous_questions=st.session_state.all_session_questions[-8:],
-        )
-    except Exception:
+    # Full list of question texts asked this session (used for deduplication)
+    asked_texts = set(t.strip().lower() for t in st.session_state.all_session_questions)
+
+    # Try up to 4 times to get a question we haven't asked before
+    q = None
+    for attempt in range(4):
+        try:
+            candidate = generate_dynamic_question(
+                subject=st.session_state.quiz_subject,
+                topic=current_topic,
+                level=ts.current_level,
+                # Pass all asked questions so the LLM avoids every one of them
+                previous_questions=st.session_state.all_session_questions,
+            )
+            # Accept if not a duplicate
+            if candidate.question_text.strip().lower() not in asked_texts:
+                q = candidate
+                break
+            # Otherwise loop and try again (LLM ignored the avoid-clause)
+        except Exception:
+            break  # LLM failed entirely — fall through to fallback bank
+
+    # If all LLM attempts returned duplicates or failed, use curated fallback bank
+    if q is None:
         q = get_fallback_question(
             subject=st.session_state.quiz_subject,
             topic=current_topic,
             level=ts.current_level,
-            exclude_texts=st.session_state.all_session_questions[-8:],
+            exclude_texts=st.session_state.all_session_questions,
         )
 
     st.session_state.current_question = q
